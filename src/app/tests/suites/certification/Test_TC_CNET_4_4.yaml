@@ -171,3 +171,19 @@ tests:
           value: 2
           constraints:
               type: int64u
+
+    - label:
+          "Step 2c: Verify that the DUT sends the ScanNetworkResponse command
+          with the NetworkingStatus field set to NetworkNotFound."
+      PICS: CNET.S.C00.Rsp && CNET.S.C01.Tx
+      command: "ScanNetworks"
+      arguments:
+          values:
+              - name: "SSID"
+                value: PIXIT.CNET.WIFI_1ST_ACCESSPOINT_SSID
+              - name: "Breadcrumb"
+                value: 2
+      response:
+          values:
+              - name: "NetworkingStatus"
+                value: 5
