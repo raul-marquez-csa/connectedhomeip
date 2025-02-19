@@ -54,7 +54,7 @@ class TC_DRLK_2_9(MatterBaseTest, DRLK_COMMON):
 
     def steps_TC_DRLK_2_9(self) -> list[TestStep]:
         steps = [
-
+            TestStep("0", "Commissioning already done.", is_commissioning=True),
             TestStep("1", "TH reads NumberOfTotalUsersSupported attribute.",
                      "Verify that TH is able to read the attribute successfully."),
             TestStep("2a", "TH sends SetUser Command to DUT.", "Verify that the DUT sends SUCCESS response"),
