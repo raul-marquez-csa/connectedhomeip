@@ -193,6 +193,8 @@ class TC_DRLK_2_5(MatterBaseTest):
         end_Hour = 16
         end_Minute = 55
 
+        self.step("0")
+
         self.step("1")
         if self.pics_guard(self.check_pics("DRLK.S.F04") and self.check_pics("DRLK.S.A0014")):
             number_week_day_schedules_supported_per_user = await self.read_attributes_from_dut(endpoint=self.app_cluster_endpoint,

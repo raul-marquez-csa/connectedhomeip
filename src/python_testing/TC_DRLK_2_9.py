@@ -390,6 +390,8 @@ class TC_DRLK_2_9(MatterBaseTest, DRLK_COMMON):
         aliroevictableendpointkey2 = bytes.fromhex(
             "047a4c662d753924cdf3779a3c84fec2debaa6f0b3084450878acc7ddcce7856ae57b1ebbe2561015103dd7474c2a183675378ec55f1e465ac3436bf3dd5ca54d4")
 
+        self.step("0")
+
         self.step("1")
         if self.pics_guard(self.check_pics("DRLK.S.F08") and self.check_pics("DRLK.S.A0011")):
             self.numberoftotaluserssupported = await self.read_attributes_from_dut(endpoint=self.app_cluster_endpoint,
