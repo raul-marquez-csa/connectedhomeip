@@ -29,15 +29,15 @@ from dataclasses import dataclass, field
 from enum import Enum, unique
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
-import chip
-import chip.exceptions
-import chip.interaction_model
-import chip.tlv
 import construct  # type: ignore
-from chip.interaction_model import PyWriteAttributeData
-from chip.native import ErrorSDKPart, PyChipError
 from rich.pretty import pprint  # type: ignore
 
+from ..interaction_model import (AttributePathIBstruct, DataVersionFilterIBstruct, EventPathIBstruct, InteractionModelError,
+                                 PyWriteAttributeData)
+from ..interaction_model import Status as InteractionModelStatus
+from ..native import ErrorSDKPart, GetLibraryHandle, NativeLibraryHandleMethodArguments, PyChipError
+from ..tlv import TLVReader
+from . import Objects as GeneratedObjects  # noqa: F401
 from .ClusterObjects import Cluster, ClusterAttributeDescriptor, ClusterEvent
 
 LOGGER = logging.getLogger(__name__)
@@ -110,9 +110,11 @@ class TypedAttributePath:
         '''Only one of either ClusterType and AttributeType OR Path may be provided.'''
 
         if (self.ClusterType is not None and self.AttributeType is not None) and self.Path is not None:
-            raise ValueError("Only one of either ClusterType and AttributeType OR Path may be provided.")
+            raise ValueError(
+                "Only one of either ClusterType and AttributeType OR Path may be provided.")
         if (self.ClusterType is None or self.AttributeType is None) and self.Path is None:
-            raise ValueError("Either ClusterType and AttributeType OR Path must be provided.")
+            raise ValueError(
+                "Either ClusterType and AttributeType OR Path must be provided.")
 
         # if ClusterType and AttributeType were provided we can continue onwards to deriving the label.
         # Otherwise, we'll need to walk the attribute index to find the right type information.
@@ -186,13 +188,13 @@ class EventHeader:
 @dataclass
 class AttributeStatus:
     Path: AttributePath
-    Status: Union[chip.interaction_model.Status, int]
+    Status: Union[InteractionModelStatus, int]
 
 
 @dataclass
 class EventStatus:
     Header: EventHeader
-    Status: chip.interaction_model.Status
+    Status: InteractionModelStatus
 
 
 AttributeWriteResult = AttributeStatus
@@ -268,7 +270,7 @@ def _BuildAttributeIndex():
                                 continue
 
                             _AttributeIndex[(attribute.cluster_id, attribute.attribute_id)] = (eval(
-                                'chip.clusters.Objects.' + clusterName + '.Attributes.' + attributeName), obj)
+                                'GeneratedObjects.' + clusterName + '.Attributes.' + attributeName), obj)
 
 
 def _BuildClusterIndex():
@@ -314,14 +316,17 @@ class AttributeCache:
     returnClusterObject: bool = False
     attributeTLVCache: Dict[int, Dict[int, Dict[int, bytes]]] = field(
         default_factory=lambda: {})
-    attributeCache: Dict[int, List[Cluster]] = field(
-        default_factory=lambda: {})
     versionList: Dict[int, Dict[int, Dict[int, int]]] = field(
+        default_factory=lambda: {})
+
+    _attributeCacheUpdateNeeded: set[AttributePath] = field(
+        default_factory=lambda: set())
+    _attributeCache: Dict[int, List[Cluster]] = field(
         default_factory=lambda: {})
 
     def UpdateTLV(self, path: AttributePath, dataVersion: int,  data: Union[bytes, ValueDecodeFailure]):
         ''' Store data in TLV since that makes it easiest to eventually convert to either the
-            cluster or attribute view representations (see below in UpdateCachedData).
+            cluster or attribute view representations (see below in GetUpdatedAttributeCache()).
         '''
         if (path.EndpointId not in self.attributeTLVCache):
             self.attributeTLVCache[path.EndpointId] = {}
@@ -344,7 +349,10 @@ class AttributeCache:
 
         clusterCache[path.AttributeId] = data
 
-    def UpdateCachedData(self, changedPathSet: set[AttributePath]):
+        # For this path the attribute cache still requires an update.
+        self._attributeCacheUpdateNeeded.add(path)
+
+    def GetUpdatedAttributeCache(self) -> Dict[int, List[Cluster]]:
         ''' This converts the raw TLV data into a cluster object format.
 
             Two formats are available:
@@ -367,7 +375,8 @@ class AttributeCache:
             try:
                 decodedData = clusterType.FromDict(
                     data=clusterType.descriptor.TagDictToLabelDict([], self.attributeTLVCache[endpointId][clusterId]))
-                decodedData.SetDataVersion(self.versionList.get(endpointId, {}).get(clusterId))
+                decodedData.SetDataVersion(
+                    self.versionList.get(endpointId, {}).get(clusterId))
                 return decodedData
             except Exception as ex:
                 return ValueDecodeFailure(self.attributeTLVCache[endpointId][clusterId], ex)
@@ -381,12 +390,12 @@ class AttributeCache:
             except Exception as ex:
                 return ValueDecodeFailure(value, ex)
 
-        for attributePath in changedPathSet:
+        for attributePath in self._attributeCacheUpdateNeeded:
             endpointId, clusterId, attributeId = attributePath.EndpointId, attributePath.ClusterId, attributePath.AttributeId
 
-            if endpointId not in self.attributeCache:
-                self.attributeCache[endpointId] = {}
-            endpointCache = self.attributeCache[endpointId]
+            if endpointId not in self._attributeCache:
+                self._attributeCache[endpointId] = {}
+            endpointCache = self._attributeCache[endpointId]
 
             if clusterId not in _ClusterIndex:
                 #
@@ -398,12 +407,14 @@ class AttributeCache:
             clusterType = _ClusterIndex[clusterId]
 
             if self.returnClusterObject:
-                endpointCache[clusterType] = handle_cluster_view(endpointId, clusterId, clusterType)
+                endpointCache[clusterType] = handle_cluster_view(
+                    endpointId, clusterId, clusterType)
             else:
                 if clusterType not in endpointCache:
                     endpointCache[clusterType] = {}
                 clusterCache = endpointCache[clusterType]
-                clusterCache[DataVersion] = self.versionList.get(endpointId, {}).get(clusterId)
+                clusterCache[DataVersion] = self.versionList.get(
+                    endpointId, {}).get(clusterId)
 
                 if (clusterId, attributeId) not in _AttributeIndex:
                     #
@@ -413,33 +424,41 @@ class AttributeCache:
                     continue
 
                 attributeType = _AttributeIndex[(clusterId, attributeId)][0]
-                clusterCache[attributeType] = handle_attribute_view(endpointId, clusterId, attributeId, attributeType)
+                clusterCache[attributeType] = handle_attribute_view(
+                    endpointId, clusterId, attributeId, attributeType)
+        self._attributeCacheUpdateNeeded.clear()
+        return self._attributeCache
 
 
 class SubscriptionTransaction:
     def __init__(self, transaction: AsyncReadTransaction, subscriptionId, devCtrl):
         self._onResubscriptionAttemptedCb: Callable[[SubscriptionTransaction,
                                                      int, int], None] = DefaultResubscriptionAttemptedCallback
-        self._onAttributeChangeCb: Callable[[TypedAttributePath, SubscriptionTransaction], None] = DefaultAttributeChangeCallback
-        self._onEventChangeCb: Callable[[EventReadResult, SubscriptionTransaction], None] = DefaultEventChangeCallback
-        self._onErrorCb: Callable[[int, SubscriptionTransaction], None] = DefaultErrorCallback
+        self._onAttributeChangeCb: Callable[[
+            TypedAttributePath, SubscriptionTransaction], None] = DefaultAttributeChangeCallback
+        self._onEventChangeCb: Callable[[
+            EventReadResult, SubscriptionTransaction], None] = DefaultEventChangeCallback
+        self._onErrorCb: Callable[[
+            int, SubscriptionTransaction], None] = DefaultErrorCallback
         self._readTransaction = transaction
         self._subscriptionId = subscriptionId
         self._devCtrl = devCtrl
         self._isDone = False
-        self._onResubscriptionSucceededCb: Optional[Callable[[SubscriptionTransaction], None]] = None
+        self._onResubscriptionSucceededCb: Optional[Callable[[
+            SubscriptionTransaction], None]] = None
         self._onResubscriptionSucceededCb_isAsync = False
         self._onResubscriptionAttemptedCb_isAsync = False
+        builtins.chipStack.RegisterSubscription(self)
 
     def GetAttributes(self):
         ''' Returns the attribute value cache tracking the latest state on the publisher.
         '''
-        return self._readTransaction._cache.attributeCache
+        return self._readTransaction._cache.GetUpdatedAttributeCache()
 
     def GetAttribute(self, path: TypedAttributePath) -> Any:
         ''' Returns a specific attribute given a TypedAttributePath.
         '''
-        data = self._readTransaction._cache.attributeCache
+        data = self._readTransaction._cache.GetUpdatedAttributeCache()
 
         if (self._readTransaction._cache.returnClusterObject):
             return eval(f'data[path.Path.EndpointId][path.ClusterType].{path.AttributeName}')
@@ -450,13 +469,14 @@ class SubscriptionTransaction:
         return self._readTransaction.GetAllEventValues()
 
     def OverrideLivenessTimeoutMs(self, timeoutMs: int):
-        handle = chip.native.GetLibraryHandle()
+        handle = GetLibraryHandle()
         builtins.chipStack.Call(
-            lambda: handle.pychip_ReadClient_OverrideLivenessTimeout(self._readTransaction._pReadClient, timeoutMs)
+            lambda: handle.pychip_ReadClient_OverrideLivenessTimeout(
+                self._readTransaction._pReadClient, timeoutMs)
         )
 
     async def TriggerResubscribeIfScheduled(self, reason: str):
-        handle = chip.native.GetLibraryHandle()
+        handle = GetLibraryHandle()
         await builtins.chipStack.CallAsyncWithResult(
             lambda: handle.pychip_ReadClient_TriggerResubscribeIfScheduled(
                 self._readTransaction._pReadClient, reason.encode("utf-8"))
@@ -467,7 +487,7 @@ class SubscriptionTransaction:
         Retrieve the reporting intervals associated with an active subscription.
         This should only be called if we're of subscription interaction type and after a subscription has been established.
         '''
-        handle = chip.native.GetLibraryHandle()
+        handle = GetLibraryHandle()
         handle.pychip_ReadClient_GetReportingIntervals.argtypes = [
             ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint16), ctypes.POINTER(ctypes.c_uint16)]
         handle.pychip_ReadClient_GetReportingIntervals.restype = PyChipError
@@ -491,9 +511,10 @@ class SubscriptionTransaction:
         is gone and hence the relevant MRP parameters can no longer be determined.
         '''
         timeoutMs = ctypes.c_uint32(0)
-        handle = chip.native.GetLibraryHandle()
+        handle = GetLibraryHandle()
         builtins.chipStack.Call(
-            lambda: handle.pychip_ReadClient_GetSubscriptionTimeoutMs(self._readTransaction._pReadClient, ctypes.pointer(timeoutMs))
+            lambda: handle.pychip_ReadClient_GetSubscriptionTimeoutMs(
+                self._readTransaction._pReadClient, ctypes.pointer(timeoutMs))
         )
         return timeoutMs.value
 
@@ -535,7 +556,7 @@ class SubscriptionTransaction:
 
     def SetErrorCallback(self, callback: Callable[[int, SubscriptionTransaction], None]):
         '''
-        Sets the callback function in case a subscription error occured,
+        Sets the callback function in case a subscription error occurred,
         accepts a Callable accepts an error code and the cached data.
         '''
         if callback is not None:
@@ -558,18 +579,17 @@ class SubscriptionTransaction:
         return self._subscriptionId
 
     def Shutdown(self):
-        if (self._isDone):
-            LOGGER.warning("Subscription 0x%08x was already terminated previously!", self.subscriptionId)
+        if self._isDone:
+            LOGGER.warning(
+                "Subscription 0x%08x was already terminated previously!", self.subscriptionId)
             return
 
-        handle = chip.native.GetLibraryHandle()
+        handle = GetLibraryHandle()
+        builtins.chipStack.UnregisterSubscription(self)
         builtins.chipStack.Call(
-            lambda: handle.pychip_ReadClient_Abort(
-                self._readTransaction._pReadClient, self._readTransaction._pReadCallback))
+            lambda: handle.pychip_ReadClient_ShutdownSubscription(
+                self._readTransaction._pReadClient))
         self._isDone = True
-
-    def __del__(self):
-        self.Shutdown()
 
     def __repr__(self):
         return f'<Subscription (Id={self._subscriptionId})>'
@@ -577,7 +597,8 @@ class SubscriptionTransaction:
 
 def DefaultResubscriptionAttemptedCallback(transaction: SubscriptionTransaction,
                                            terminationError, nextResubscribeIntervalMsec):
-    print(f"Previous subscription failed with Error: {terminationError} - re-subscribing in {nextResubscribeIntervalMsec}ms...")
+    print(
+        f"Previous subscription failed with Error: {terminationError} - re-subscribing in {nextResubscribeIntervalMsec}ms...")
 
 
 def DefaultAttributeChangeCallback(path: TypedAttributePath, transaction: SubscriptionTransaction):
@@ -598,7 +619,7 @@ def DefaultEventChangeCallback(data: EventReadResult, transaction: SubscriptionT
 
 
 def DefaultErrorCallback(chipError: int, transaction: SubscriptionTransaction):
-    print(f"Error during Subscription: Chip Stack Error {chipError}")
+    print(f"Error during Subscription: Matter Stack Error {chipError}")
 
 
 def _BuildEventIndex():
@@ -614,14 +635,14 @@ def _BuildEventIndex():
                         if inspect.isclass(event):
                             base_classes = inspect.getmro(event)
 
-                            # Only match on classes that extend the ClusterEventescriptor class
+                            # Only match on classes that extend the ClusterEvent class
                             matched = [
                                 value for value in base_classes if 'ClusterEvent' in str(value)]
                             if (matched == []):
                                 continue
 
                             _EventIndex[str(EventPath(ClusterId=event.cluster_id, EventId=event.event_id))] = eval(
-                                'chip.clusters.Objects.' + clusterName + '.Events.' + eventName)
+                                'GeneratedObjects.' + clusterName + '.Events.' + eventName)
 
 
 class AsyncReadTransaction:
@@ -640,25 +661,35 @@ class AsyncReadTransaction:
         self._cache = AttributeCache(returnClusterObject=returnClusterObject)
         self._changedPathSet: Set[AttributePath] = set()
         self._pReadClient = None
-        self._pReadCallback = None
         self._resultError: Optional[PyChipError] = None
 
-    def SetClientObjPointers(self, pReadClient, pReadCallback):
+    def SetClientObjPointers(self, pReadClient):
         self._pReadClient = pReadClient
-        self._pReadCallback = pReadCallback
 
     def GetAllEventValues(self):
         return self._events
 
+    def GetReadResponse(self) -> AsyncReadTransaction.ReadResponse:
+        """Prepares and returns the ReadResponse object."""
+        return self.ReadResponse(
+            attributes=self._cache.GetUpdatedAttributeCache(),
+            events=self._events,
+            tlvAttributes=self._cache.attributeTLVCache
+        )
+
+    def GetSubscriptionHandler(self) -> SubscriptionTransaction | None:
+        """Returns subscription transaction."""
+        return self._subscription_handler
+
     def handleAttributeData(self, path: AttributePath, dataVersion: int, status: int, data: bytes):
         try:
-            imStatus = chip.interaction_model.Status(status)
+            imStatus = InteractionModelStatus(status)
 
-            if (imStatus != chip.interaction_model.Status.Success):
+            if (imStatus != InteractionModelStatus.Success):
                 attributeValue = ValueDecodeFailure(
-                    None, chip.interaction_model.InteractionModelError(imStatus))
+                    None, InteractionModelError(imStatus))
             else:
-                tlvData = chip.tlv.TLVReader(data).get().get("Any", {})
+                tlvData = TLVReader(data).get().get("Any", {})
                 attributeValue = tlvData
 
             self._cache.UpdateTLV(path, dataVersion, attributeValue)
@@ -674,7 +705,7 @@ class AsyncReadTransaction:
 
             if data:
                 # data will be an empty buffer when we received an EventStatusIB instead of an EventDataIB.
-                tlvData = chip.tlv.TLVReader(data).get().get("Any", {})
+                tlvData = TLVReader(data).get().get("Any", {})
 
                 if eventType is None:
                     eventValue = ValueDecodeFailure(
@@ -697,7 +728,7 @@ class AsyncReadTransaction:
                             raise
 
             eventResult = EventReadResult(
-                Header=header, Data=eventValue, Status=chip.interaction_model.Status(status))
+                Header=header, Data=eventValue, Status=InteractionModelStatus(status))
             self._events.append(eventResult)
 
             if (self._subscription_handler is not None):
@@ -709,14 +740,15 @@ class AsyncReadTransaction:
 
     def handleError(self, chipError: PyChipError):
         if self._subscription_handler:
-            self._subscription_handler.OnErrorCb(chipError.code, self._subscription_handler)
+            self._subscription_handler.OnErrorCb(
+                chipError.code, self._subscription_handler)
         self._resultError = chipError
 
     def _handleSubscriptionEstablished(self, subscriptionId):
         if not self._future.done():
             self._subscription_handler = SubscriptionTransaction(
                 self, subscriptionId, self._devCtrl)
-            self._future.set_result(self._subscription_handler)
+            self._future.set_result(self)
         else:
             self._subscription_handler._subscriptionId = subscriptionId
             if self._subscription_handler._onResubscriptionSucceededCb is not None:
@@ -724,7 +756,8 @@ class AsyncReadTransaction:
                     self._event_loop.create_task(
                         self._subscription_handler._onResubscriptionSucceededCb(self._subscription_handler))
                 else:
-                    self._subscription_handler._onResubscriptionSucceededCb(self._subscription_handler)
+                    self._subscription_handler._onResubscriptionSucceededCb(
+                        self._subscription_handler)
 
     def handleSubscriptionEstablished(self, subscriptionId):
         self._event_loop.call_soon_threadsafe(
@@ -733,7 +766,7 @@ class AsyncReadTransaction:
     def handleResubscriptionAttempted(self, terminationCause: PyChipError, nextResubscribeIntervalMsec: int):
         if not self._subscription_handler:
             return
-        if (self._subscription_handler._onResubscriptionAttemptedCb_isAsync):
+        if self._subscription_handler._onResubscriptionAttemptedCb_isAsync:
             self._event_loop.create_task(self._subscription_handler._onResubscriptionAttemptedCb(
                 self._subscription_handler, terminationCause.code, nextResubscribeIntervalMsec))
         else:
@@ -745,9 +778,7 @@ class AsyncReadTransaction:
         pass
 
     def _handleReportEnd(self):
-        self._cache.UpdateCachedData(self._changedPathSet)
-
-        if (self._subscription_handler is not None):
+        if self._subscription_handler is not None:
             for change in self._changedPathSet:
                 try:
                     attribute_path = TypedAttributePath(Path=change)
@@ -772,8 +803,7 @@ class AsyncReadTransaction:
             if self._resultError is not None:
                 self._future.set_exception(self._resultError.to_exception())
             else:
-                self._future.set_result(AsyncReadTransaction.ReadResponse(
-                    attributes=self._cache.attributeCache, events=self._events, tlvAttributes=self._cache.attributeTLVCache))
+                self._future.set_result(self)
 
         #
         # Decrement the ref on ourselves to match the increment that happened at allocation.
@@ -802,8 +832,9 @@ class AsyncWriteTransaction:
 
     def handleResponse(self, path: AttributePath, status: int):
         try:
-            imStatus = chip.interaction_model.Status(status)
-            self._resultData.append(AttributeWriteResult(Path=path, Status=imStatus))
+            imStatus = InteractionModelStatus(status)
+            self._resultData.append(
+                AttributeWriteResult(Path=path, Status=imStatus))
         except ValueError as ex:
             LOGGER.exception(ex)
 
@@ -818,8 +849,10 @@ class AsyncWriteTransaction:
         #
         if self._resultError is not None:
             if self._resultError.sdk_part is ErrorSDKPart.IM_GLOBAL_STATUS:
-                im_status = chip.interaction_model.Status(self._resultError.sdk_code)
-                self._future.set_exception(chip.interaction_model.InteractionModelError(im_status))
+                im_status = InteractionModelStatus(
+                    self._resultError.sdk_code)
+                self._future.set_exception(
+                    InteractionModelError(im_status))
             else:
                 self._future.set_exception(self._resultError.to_exception())
         else:
@@ -839,7 +872,8 @@ class AsyncWriteTransaction:
 _OnReadAttributeDataCallbackFunct = CFUNCTYPE(
     None, py_object, c_uint32, c_uint16, c_uint32, c_uint32, c_uint8, c_void_p, c_size_t)
 _OnSubscriptionEstablishedCallbackFunct = CFUNCTYPE(None, py_object, c_uint32)
-_OnResubscriptionAttemptedCallbackFunct = CFUNCTYPE(None, py_object, PyChipError, c_uint32)
+_OnResubscriptionAttemptedCallbackFunct = CFUNCTYPE(
+    None, py_object, PyChipError, c_uint32)
 _OnReadEventDataCallbackFunct = CFUNCTYPE(
     None, py_object, c_uint16, c_uint32, c_uint32, c_uint64, c_uint8, c_uint64, c_uint8, c_void_p, c_size_t, c_uint8)
 _OnReadErrorCallbackFunct = CFUNCTYPE(
@@ -867,7 +901,7 @@ def _OnReadEventDataCallback(closure, endpoint: int, cluster: int, event: c_uint
 
     # EventHeader is valid only when successful
     eventHeader = None
-    if status == chip.interaction_model.Status.Success.value:
+    if status == InteractionModelStatus.Success.value:
         eventHeader = EventHeader(
             EndpointId=endpoint, ClusterId=cluster, EventId=event, EventNumber=number, Priority=EventPriority(priority), Timestamp=timestamp, TimestampType=EventTimestampType(timestampType))
     closure.handleEventData(eventHeader, path, dataBytes[:], status)
@@ -880,7 +914,8 @@ def _OnSubscriptionEstablishedCallback(closure, subscriptionId):
 
 @_OnResubscriptionAttemptedCallbackFunct
 def _OnResubscriptionAttemptedCallback(closure, terminationCause: PyChipError, nextResubscribeIntervalMsec: int):
-    closure.handleResubscriptionAttempted(terminationCause, nextResubscribeIntervalMsec)
+    closure.handleResubscriptionAttempted(
+        terminationCause, nextResubscribeIntervalMsec)
 
 
 @_OnReadErrorCallbackFunct
@@ -930,23 +965,30 @@ def _OnWriteDoneCallback(closure):
 def WriteAttributes(future: Future, eventLoop, device,
                     attributes: List[AttributeWriteRequest], timedRequestTimeoutMs: Union[None, int] = None,
                     interactionTimeoutMs: Union[None, int] = None, busyWaitMs: Union[None, int] = None) -> PyChipError:
-    handle = chip.native.GetLibraryHandle()
+    handle = GetLibraryHandle()
 
     numberOfAttributes = len(attributes)
     pyWriteAttributesArrayType = PyWriteAttributeData * numberOfAttributes
     pyWriteAttributes = pyWriteAttributesArrayType()
     for idx, attr in enumerate(attributes):
         if attr.Attribute.must_use_timed_write and timedRequestTimeoutMs is None or timedRequestTimeoutMs == 0:
-            raise chip.interaction_model.InteractionModelError(chip.interaction_model.Status.NeedsTimedInteraction)
+            raise InteractionModelError(
+                InteractionModelStatus.NeedsTimedInteraction)
 
         tlv = attr.Attribute.ToTLV(None, attr.Data)
 
-        pyWriteAttributes[idx].attributePath.endpointId = c_uint16(attr.EndpointId)
-        pyWriteAttributes[idx].attributePath.clusterId = c_uint32(attr.Attribute.cluster_id)
-        pyWriteAttributes[idx].attributePath.attributeId = c_uint32(attr.Attribute.attribute_id)
-        pyWriteAttributes[idx].attributePath.dataVersion = c_uint32(attr.DataVersion)
-        pyWriteAttributes[idx].attributePath.hasDataVersion = c_uint8(attr.HasDataVersion)
-        pyWriteAttributes[idx].tlvData = cast(ctypes.c_char_p(bytes(tlv)), c_void_p)
+        pyWriteAttributes[idx].attributePath.endpointId = c_uint16(
+            attr.EndpointId)
+        pyWriteAttributes[idx].attributePath.clusterId = c_uint32(
+            attr.Attribute.cluster_id)
+        pyWriteAttributes[idx].attributePath.attributeId = c_uint32(
+            attr.Attribute.attribute_id)
+        pyWriteAttributes[idx].attributePath.dataVersion = c_uint32(
+            attr.DataVersion)
+        pyWriteAttributes[idx].attributePath.hasDataVersion = c_uint8(
+            attr.HasDataVersion)
+        pyWriteAttributes[idx].tlvData = cast(
+            ctypes.c_char_p(bytes(tlv)), c_void_p)
         pyWriteAttributes[idx].tlvLength = c_size_t(len(tlv))
 
     transaction = AsyncWriteTransaction(future, eventLoop)
@@ -954,8 +996,10 @@ def WriteAttributes(future: Future, eventLoop, device,
     res = builtins.chipStack.Call(
         lambda: handle.pychip_WriteClient_WriteAttributes(
             ctypes.py_object(transaction), device,
-            ctypes.c_size_t(0 if timedRequestTimeoutMs is None else timedRequestTimeoutMs),
-            ctypes.c_size_t(0 if interactionTimeoutMs is None else interactionTimeoutMs),
+            ctypes.c_size_t(
+                0 if timedRequestTimeoutMs is None else timedRequestTimeoutMs),
+            ctypes.c_size_t(
+                0 if interactionTimeoutMs is None else interactionTimeoutMs),
             ctypes.c_size_t(0 if busyWaitMs is None else busyWaitMs),
             pyWriteAttributes, ctypes.c_size_t(numberOfAttributes))
     )
@@ -965,7 +1009,7 @@ def WriteAttributes(future: Future, eventLoop, device,
 
 
 def WriteGroupAttributes(groupId: int, devCtrl: c_void_p, attributes: List[AttributeWriteRequest], busyWaitMs: Union[None, int] = None) -> PyChipError:
-    handle = chip.native.GetLibraryHandle()
+    handle = GetLibraryHandle()
 
     numberOfAttributes = len(attributes)
     pyWriteAttributesArrayType = PyWriteAttributeData * numberOfAttributes
@@ -974,12 +1018,18 @@ def WriteGroupAttributes(groupId: int, devCtrl: c_void_p, attributes: List[Attri
 
         tlv = attr.Attribute.ToTLV(None, attr.Data)
 
-        pyWriteAttributes[idx].attributePath.endpointId = c_uint16(attr.EndpointId)
-        pyWriteAttributes[idx].attributePath.clusterId = c_uint32(attr.Attribute.cluster_id)
-        pyWriteAttributes[idx].attributePath.attributeId = c_uint32(attr.Attribute.attribute_id)
-        pyWriteAttributes[idx].attributePath.dataVersion = c_uint32(attr.DataVersion)
-        pyWriteAttributes[idx].attributePath.hasDataVersion = c_uint8(attr.HasDataVersion)
-        pyWriteAttributes[idx].tlvData = cast(ctypes.c_char_p(bytes(tlv)), c_void_p)
+        pyWriteAttributes[idx].attributePath.endpointId = c_uint16(
+            attr.EndpointId)
+        pyWriteAttributes[idx].attributePath.clusterId = c_uint32(
+            attr.Attribute.cluster_id)
+        pyWriteAttributes[idx].attributePath.attributeId = c_uint32(
+            attr.Attribute.attribute_id)
+        pyWriteAttributes[idx].attributePath.dataVersion = c_uint32(
+            attr.DataVersion)
+        pyWriteAttributes[idx].attributePath.hasDataVersion = c_uint8(
+            attr.HasDataVersion)
+        pyWriteAttributes[idx].tlvData = cast(
+            ctypes.c_char_p(bytes(tlv)), c_void_p)
         pyWriteAttributes[idx].tlvLength = c_size_t(len(tlv))
 
     return builtins.chipStack.Call(
@@ -1001,18 +1051,16 @@ _ReadParams = construct.Struct(
 )
 
 
-def Read(future: Future, eventLoop, device, devCtrl,
+def Read(transaction: AsyncReadTransaction, device,
          attributes: Optional[List[AttributePath]] = None, dataVersionFilters: Optional[List[DataVersionFilter]] = None,
-         events: Optional[List[EventPath]] = None, eventNumberFilter: Optional[int] = None, returnClusterObject: bool = True,
+         events: Optional[List[EventPath]] = None, eventNumberFilter: Optional[int] = None,
          subscriptionParameters: Optional[SubscriptionParameters] = None,
          fabricFiltered: bool = True, keepSubscriptions: bool = False, autoResubscribe: bool = True) -> PyChipError:
     if (not attributes) and dataVersionFilters:
         raise ValueError(
             "Must provide valid attribute list when data version filters is not null")
 
-    handle = chip.native.GetLibraryHandle()
-    transaction = AsyncReadTransaction(
-        future, eventLoop, devCtrl, returnClusterObject)
+    handle = GetLibraryHandle()
 
     attributePathsForCffi = None
     if attributes is not None:
@@ -1020,15 +1068,15 @@ def Read(future: Future, eventLoop, device, devCtrl,
         attributePathsForCffiArrayType = c_void_p * numberOfAttributePaths
         attributePathsForCffi = attributePathsForCffiArrayType()
         for idx, attr in enumerate(attributes):
-            path = chip.interaction_model.AttributePathIBstruct.parse(
-                b'\xff' * chip.interaction_model.AttributePathIBstruct.sizeof())
+            path = AttributePathIBstruct.parse(
+                b'\xff' * AttributePathIBstruct.sizeof())
             if attr.EndpointId is not None:
                 path.EndpointId = attr.EndpointId
             if attr.ClusterId is not None:
                 path.ClusterId = attr.ClusterId
             if attr.AttributeId is not None:
                 path.AttributeId = attr.AttributeId
-            path = chip.interaction_model.AttributePathIBstruct.build(path)
+            path = AttributePathIBstruct.build(path)
             attributePathsForCffi[idx] = cast(ctypes.c_char_p(path), c_void_p)
 
     dataVersionFiltersForCffi = None
@@ -1037,8 +1085,8 @@ def Read(future: Future, eventLoop, device, devCtrl,
         dataVersionFiltersForCffiArrayType = c_void_p * numberOfDataVersionFilters
         dataVersionFiltersForCffi = dataVersionFiltersForCffiArrayType()
         for idx, f in enumerate(dataVersionFilters):
-            filter = chip.interaction_model.DataVersionFilterIBstruct.parse(
-                b'\xff' * chip.interaction_model.DataVersionFilterIBstruct.sizeof())
+            filter = DataVersionFilterIBstruct.parse(
+                b'\xff' * DataVersionFilterIBstruct.sizeof())
             if f.EndpointId is not None:
                 filter.EndpointId = f.EndpointId
             else:
@@ -1054,9 +1102,10 @@ def Read(future: Future, eventLoop, device, devCtrl,
             else:
                 raise ValueError(
                     "DataVersionFilter must provide DataVersion.")
-            filter = chip.interaction_model.DataVersionFilterIBstruct.build(
+            filter = DataVersionFilterIBstruct.build(
                 filter)
-            dataVersionFiltersForCffi[idx] = cast(ctypes.c_char_p(filter), c_void_p)
+            dataVersionFiltersForCffi[idx] = cast(
+                ctypes.c_char_p(filter), c_void_p)
 
     eventPathsForCffi = None
     if events is not None:
@@ -1064,8 +1113,8 @@ def Read(future: Future, eventLoop, device, devCtrl,
         eventPathsForCffiArrayType = c_void_p * numberOfEvents
         eventPathsForCffi = eventPathsForCffiArrayType()
         for idx, event in enumerate(events):
-            path = chip.interaction_model.EventPathIBstruct.parse(
-                b'\xff' * chip.interaction_model.EventPathIBstruct.sizeof())
+            path = EventPathIBstruct.parse(
+                b'\xff' * EventPathIBstruct.sizeof())
             if event.EndpointId is not None:
                 path.EndpointId = event.EndpointId
             if event.ClusterId is not None:
@@ -1076,11 +1125,10 @@ def Read(future: Future, eventLoop, device, devCtrl,
                 path.Urgent = event.Urgent
             else:
                 path.Urgent = 0
-            path = chip.interaction_model.EventPathIBstruct.build(path)
+            path = EventPathIBstruct.build(path)
             eventPathsForCffi[idx] = cast(ctypes.c_char_p(path), c_void_p)
 
     readClientObj = ctypes.POINTER(c_void_p)()
-    readCallbackObj = ctypes.POINTER(c_void_p)()
 
     ctypes.pythonapi.Py_IncRef(ctypes.py_object(transaction))
     params = _ReadParams.parse(b'\x00' * _ReadParams.sizeof())
@@ -1094,13 +1142,13 @@ def Read(future: Future, eventLoop, device, devCtrl,
     params = _ReadParams.build(params)
     eventNumberFilterPtr = ctypes.POINTER(ctypes.c_ulonglong)()
     if eventNumberFilter is not None:
-        eventNumberFilterPtr = ctypes.POINTER(ctypes.c_ulonglong)(ctypes.c_ulonglong(eventNumberFilter))
+        eventNumberFilterPtr = ctypes.POINTER(ctypes.c_ulonglong)(
+            ctypes.c_ulonglong(eventNumberFilter))
 
     res = builtins.chipStack.Call(
         lambda: handle.pychip_ReadClient_Read(
             ctypes.py_object(transaction),
             ctypes.byref(readClientObj),
-            ctypes.byref(readCallbackObj),
             device,
             ctypes.c_char_p(params),
             attributePathsForCffi,
@@ -1112,39 +1160,20 @@ def Read(future: Future, eventLoop, device, devCtrl,
             ctypes.c_size_t(0 if events is None else len(events)),
             eventNumberFilterPtr))
 
-    transaction.SetClientObjPointers(readClientObj, readCallbackObj)
+    transaction.SetClientObjPointers(readClientObj)
 
     if not res.is_success:
         ctypes.pythonapi.Py_DecRef(ctypes.py_object(transaction))
     return res
 
 
-def ReadAttributes(future: Future, eventLoop, device, devCtrl,
-                   attributes: List[AttributePath], dataVersionFilters: Optional[List[DataVersionFilter]] = None,
-                   returnClusterObject: bool = True,
-                   subscriptionParameters: Optional[SubscriptionParameters] = None, fabricFiltered: bool = True) -> int:
-    return Read(future=future, eventLoop=eventLoop, device=device,
-                devCtrl=devCtrl, attributes=attributes, dataVersionFilters=dataVersionFilters,
-                events=None, returnClusterObject=returnClusterObject,
-                subscriptionParameters=subscriptionParameters, fabricFiltered=fabricFiltered)
-
-
-def ReadEvents(future: Future, eventLoop, device, devCtrl,
-               events: List[EventPath], eventNumberFilter=None, returnClusterObject: bool = True,
-               subscriptionParameters: Optional[SubscriptionParameters] = None, fabricFiltered: bool = True) -> int:
-    return Read(future=future, eventLoop=eventLoop, device=device, devCtrl=devCtrl, attributes=None,
-                dataVersionFilters=None, events=events, eventNumberFilter=eventNumberFilter,
-                returnClusterObject=returnClusterObject,
-                subscriptionParameters=subscriptionParameters, fabricFiltered=fabricFiltered)
-
-
 def Init():
-    handle = chip.native.GetLibraryHandle()
+    handle = GetLibraryHandle()
 
     # Uses one of the type decorators as an indicator for everything being
     # initialized.
     if not handle.pychip_WriteClient_InitCallbacks.argtypes:
-        setter = chip.native.NativeLibraryHandleMethodArguments(handle)
+        setter = NativeLibraryHandleMethodArguments(handle)
 
         handle.pychip_WriteClient_WriteAttributes.restype = PyChipError
         handle.pychip_WriteClient_WriteGroupAttributes.restype = PyChipError

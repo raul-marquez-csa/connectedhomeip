@@ -36,12 +36,8 @@ namespace AccessControlExtensionChanged {
 static constexpr EventId Id = 0x00000001;
 } // namespace AccessControlExtensionChanged
 
-namespace AccessRestrictionEntryChanged {
-static constexpr EventId Id = 0x00000002;
-} // namespace AccessRestrictionEntryChanged
-
 namespace FabricRestrictionReviewUpdate {
-static constexpr EventId Id = 0x00000003;
+static constexpr EventId Id = 0x00000002;
 } // namespace FabricRestrictionReviewUpdate
 
 } // namespace Events
@@ -457,6 +453,20 @@ static constexpr EventId Id = 0x00000001;
 } // namespace Events
 } // namespace WaterHeaterManagement
 
+namespace CommodityPrice {
+namespace Events {
+
+namespace PriceChange {
+static constexpr EventId Id = 0x00000000;
+} // namespace PriceChange
+
+namespace ForecastChange {
+static constexpr EventId Id = 0x00000001;
+} // namespace ForecastChange
+
+} // namespace Events
+} // namespace CommodityPrice
+
 namespace DemandResponseLoadControl {
 namespace Events {
 
@@ -637,6 +647,16 @@ static constexpr EventId Id = 0x00000010;
 } // namespace Events
 } // namespace PumpConfigurationAndControl
 
+namespace OccupancySensing {
+namespace Events {
+
+namespace OccupancyChanged {
+static constexpr EventId Id = 0x00000000;
+} // namespace OccupancyChanged
+
+} // namespace Events
+} // namespace OccupancySensing
+
 namespace TargetNavigator {
 namespace Events {
 
@@ -676,6 +696,34 @@ static constexpr EventId Id = 0x00000000;
 
 } // namespace Events
 } // namespace ContentControl
+
+namespace ZoneManagement {
+namespace Events {
+
+namespace ZoneTriggered {
+static constexpr EventId Id = 0x00000000;
+} // namespace ZoneTriggered
+
+namespace ZoneStopped {
+static constexpr EventId Id = 0x00000001;
+} // namespace ZoneStopped
+
+} // namespace Events
+} // namespace ZoneManagement
+
+namespace PushAvStreamTransport {
+namespace Events {
+
+namespace PushTransportBegin {
+static constexpr EventId Id = 0x00000000;
+} // namespace PushTransportBegin
+
+namespace PushTransportEnd {
+static constexpr EventId Id = 0x00000001;
+} // namespace PushTransportEnd
+
+} // namespace Events
+} // namespace PushAvStreamTransport
 
 namespace CommissionerControl {
 namespace Events {

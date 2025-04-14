@@ -50,6 +50,11 @@
     }
     ChipLogProgress(chipTool, "Pairing Success");
     ChipLogProgress(chipTool, "PASE establishment successful");
+    if (_params == nil) {
+        _commandBridge->SetCommandExitStatus(nil);
+        return;
+    }
+
     NSError * commissionError;
     [_commissioner commissionNodeWithID:@(_deviceID) commissioningParams:_params error:&commissionError];
     if (commissionError != nil) {
@@ -68,6 +73,11 @@
     (void) nodeID;
     NSString * message = [NSString stringWithFormat:@"Pairing Commissioning Complete with metrics %@", metrics];
     _commandBridge->SetCommandExitStatus(error, [message UTF8String]);
+}
+
+- (void)controller:(MTRDeviceController *)controller commissioneeHasReceivedNetworkCredentials:(NSNumber *)nodeID
+{
+    NSLog(@"Node %@ has received network credentials", nodeID);
 }
 
 @end
