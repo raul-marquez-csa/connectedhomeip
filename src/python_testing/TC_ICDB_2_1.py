@@ -155,7 +155,8 @@ class TC_ICDB_2_1(ICDBaseTest):
 
         # Verify that the RegisteredClients entry's checkInNodeID and monitoredSubject match TH's node ID
         rc_entry = registered_clients[0]
-        log.info(f"Registered ICD Client entry: checkInNodeID={rc_entry.checkInNodeID}, monitoredSubject={rc_entry.monitoredSubject}")
+        log.info(
+            f"Registered ICD Client entry: checkInNodeID={rc_entry.checkInNodeID}, monitoredSubject={rc_entry.monitoredSubject}")
         asserts.assert_equal(rc_entry.checkInNodeID, TH.nodeId,
                              f"checkInNodeID must match TH node ID. Expected: {TH.nodeId}, Got: {rc_entry.checkInNodeID}")
         asserts.assert_equal(rc_entry.monitoredSubject, TH.nodeId,
