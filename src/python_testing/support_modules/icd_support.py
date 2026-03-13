@@ -171,7 +171,7 @@ class ICDBaseTest(MatterBaseTest):
 
     async def unregister_all_clients(self):
         """Unregisters all entries in the DUT's RegisteredClients attribute."""
-        registeredClients = await self._read_icdm_attribute_expect_success(attributes.RegisteredClients)
+        registeredClients = await self.read_icdm_attribute_expect_success(attributes.RegisteredClients)
 
         if not registeredClients:
             log.info("RegisteredClients is empty.")
@@ -181,6 +181,6 @@ class ICDBaseTest(MatterBaseTest):
         for client in registeredClients:
             try:
                 log.info(f"Unregistering client: {client}...")
-                await self._send_single_icdm_command(commands.UnregisterClient(checkInNodeID=client.checkInNodeID))
+                await self.send_single_icdm_command(commands.UnregisterClient(checkInNodeID=client.checkInNodeID))
             except InteractionModelError as e:
                 asserts.assert_fail(f"Unexpected error returned when unregistering client: {e}")
