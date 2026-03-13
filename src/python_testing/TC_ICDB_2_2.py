@@ -62,12 +62,12 @@ On a real DUT:
 import logging
 
 from mobly import asserts
+from support_modules.icd_support import ICDBaseTest, ICDTransition
 
 import matter.clusters as Clusters
 from matter.testing.commissioning import get_setup_payload_info_config
 from matter.testing.decorators import async_test_body
 from matter.testing.runner import TestStep, default_matter_test_main
-from support_modules.icd_support import ICDBaseTest, ICDTransition
 
 log = logging.getLogger(__name__)
 

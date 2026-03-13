@@ -138,7 +138,7 @@ class ICDBaseTest(MatterBaseTest):
             log.info(f"ActiveToIdle: active_mode_duration_ms={active_mode_duration_ms} -> Wait time: {wait_s}s")
             return wait_s
 
-        elif transition == ICDTransition.IdleToActive:
+        if transition == ICDTransition.IdleToActive:
             if idle_mode_duration_s is None:
                 raise ValueError("IdleToActive requires idle_mode_duration_s")
             if active_mode_duration_ms is not None:
@@ -147,17 +147,17 @@ class ICDBaseTest(MatterBaseTest):
             log.info(f"IdleToActive: idle_mode_duration_s={idle_mode_duration_s} -> Wait time: {wait_s}s")
             return wait_s
 
-        elif transition == ICDTransition.FullCycle:
+        if transition == ICDTransition.FullCycle:
             if active_mode_duration_ms is None:
                 raise ValueError("FullCycle requires active_mode_duration_ms")
             if idle_mode_duration_s is None:
                 raise ValueError("FullCycle requires idle_mode_duration_s")
             wait_s = (active_mode_duration_ms / 1000.0) + 1.0 + idle_mode_duration_s + 1.0
-            log.info(f"FullCycle: active_mode_duration_ms={active_mode_duration_ms}, idle_mode_duration_s={idle_mode_duration_s} -> Wait time: {wait_s}s")
+            log.info(
+                f"FullCycle: active_mode_duration_ms={active_mode_duration_ms}, idle_mode_duration_s={idle_mode_duration_s} -> Wait time: {wait_s}s")
             return wait_s
 
-        else:
-            raise ValueError(f"Unknown ICDTransition: {transition}")
+        raise ValueError(f"Unknown ICDTransition: {transition}")
 
     async def wait_for_transition(self, transition: ICDTransition, *,
                                   active_mode_duration_ms: int = None,
