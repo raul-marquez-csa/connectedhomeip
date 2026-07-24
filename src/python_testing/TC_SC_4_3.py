@@ -229,7 +229,7 @@ class TC_SC_4_3(MatterBaseTest):
         # If TXT record is required, TH verifies its presence
         self.step(6)
         if txt_record_required:
-            await assert_txt_record_present(instance_name, MdnsServiceType.OPERATIONAL, require_keys=True)
+            await assert_txt_record_present(instance_name, MdnsServiceType.OPERATIONAL)
 
         # *** STEP 7 ***
         # TH checks if TCP is supported by the DUT

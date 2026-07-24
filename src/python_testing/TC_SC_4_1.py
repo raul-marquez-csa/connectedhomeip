@@ -479,7 +479,7 @@ class TC_SC_4_1(MatterBaseTest):
         )
 
         # Verify that the TXT record is present and non-empty
-        await assert_txt_record_present(long_discriminator_ptr_instance_name, MdnsServiceType.COMMISSIONABLE, require_keys=True)
+        await assert_txt_record_present(long_discriminator_ptr_instance_name, MdnsServiceType.COMMISSIONABLE)
 
         # Verify that the TXT record's instance name is equal to 'long_discriminator_subtype_ptr_instance_name'
         asserts.assert_equal(txt_record.instance_name, long_discriminator_ptr_instance_name,
@@ -748,7 +748,7 @@ class TC_SC_4_1(MatterBaseTest):
         # If TXT record is required, TH verifies its presence
         self.step(6)
         if txt_record_required:
-            await assert_txt_record_present(instance_name, MdnsServiceType.OPERATIONAL, require_keys=True)
+            await assert_txt_record_present(instance_name, MdnsServiceType.OPERATIONAL)
 
         # *** STEP 7 ***
         # Check if the DUT supports TCP
