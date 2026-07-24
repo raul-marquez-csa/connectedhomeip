@@ -91,8 +91,8 @@ class TC_ICDB_2_5(ICDBaseTest):
     @async_test_body
     async def setup_class(self):
         # *** PRECONDITION ***
-        # Commission DUT to TH1 with ICD registration
-        # Commission DUT to TH2 without ICD registration
+        # Commission DUT to TH1
+        # Commission DUT to TH2 on a separate fabric
         super().setup_class()
 
         # TH1 commissions DUT (ICD registration done explicitly via RegisterClient in the test body)
