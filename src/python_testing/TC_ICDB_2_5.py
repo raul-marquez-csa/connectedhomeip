@@ -153,7 +153,7 @@ class TC_ICDB_2_5(ICDBaseTest):
             key=th1_checkin_key,
             clientType=ClientTypeEnum.kPermanent,
         ))
-        log.info(f"TH1 RegisterClient SUCCESS for checkInNodeID={th1_check_in_node_id}")
+        log.info("TH1 RegisterClient SUCCESS for checkInNodeID=%s", th1_check_in_node_id)
 
         # TH1 reads RegisteredClients to verify registration
         th1_registered_clients = await self.read_icdm_attribute_expect_success(attributes.RegisteredClients)
@@ -185,7 +185,7 @@ class TC_ICDB_2_5(ICDBaseTest):
                             Save value as idle_mode_duration_s, with it calculate: SUBSCRIPTION_MAX_INTERVAL_PUBLISHER_LIMIT = MAX(idle_mode_duration_s, 3600s).
                             Store value for later use.""")
         idle_mode_duration_s = await self.read_icdm_attribute_expect_success(attributes.IdleModeDuration)
-        log.info(f"IdleModeDuration: {idle_mode_duration_s}s")
+        log.info("IdleModeDuration: %ss", idle_mode_duration_s)
         subscription_max_interval_publisher_limit_s = max(idle_mode_duration_s, ONE_HOUR_S)
 
         # *** STEP 4 ***
@@ -207,8 +207,8 @@ class TC_ICDB_2_5(ICDBaseTest):
 
         _, th1_max_interval_s = th1_subscription.GetReportingIntervalsSeconds()
         _, th2_max_interval_s = th2_subscription.GetReportingIntervalsSeconds()
-        log.info(f"TH1 MaxInterval: {th1_max_interval_s}s")
-        log.info(f"TH2 MaxInterval: {th2_max_interval_s}s")
+        log.info("TH1 MaxInterval: %ss", th1_max_interval_s)
+        log.info("TH2 MaxInterval: %ss", th2_max_interval_s)
 
         # Verify MinIntervalFloor <= MaxInterval <= MAX(SUBSCRIPTION_MAX_INTERVAL_PUBLISHER_LIMIT, MaxIntervalCeiling) for TH1
         asserts.assert_less_equal(th1_max_interval_s,
