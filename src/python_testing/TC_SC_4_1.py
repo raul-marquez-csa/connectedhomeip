@@ -478,15 +478,8 @@ class TC_SC_4_1(MatterBaseTest):
             log_output=True
         )
 
-        # Verify that the TXT record is returned
-        asserts.assert_is_not_none(txt_record,
-                                   f"TXT record expected but not found for instance name '{long_discriminator_ptr_instance_name}' "
-                                   f"of type '{MdnsServiceType.COMMISSIONABLE.value}'")
-
-        # Verify that the TXT record is non-empty
-        asserts.assert_greater(len(txt_record.txt), 0,
-                               f"TXT record found but empty for instance name '{long_discriminator_ptr_instance_name}' "
-                               f"of type '{MdnsServiceType.COMMISSIONABLE.value}'")
+        # Verify that the TXT record is present and non-empty
+        await assert_txt_record_present(long_discriminator_ptr_instance_name, MdnsServiceType.COMMISSIONABLE, require_keys=True)
 
         # Verify that the TXT record's instance name is equal to 'long_discriminator_subtype_ptr_instance_name'
         asserts.assert_equal(txt_record.instance_name, long_discriminator_ptr_instance_name,

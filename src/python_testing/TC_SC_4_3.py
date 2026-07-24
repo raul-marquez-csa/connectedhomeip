@@ -239,7 +239,8 @@ class TC_SC_4_3(MatterBaseTest):
         # *** STEP 8 ***
         # TH performs a query for the SRV record against the qname instance_qname.
         self.step(8)
-        srv_record = await MdnsDiscovery().get_srv_record(
+        mdns = MdnsDiscovery()
+        srv_record = await mdns.get_srv_record(
             service_name=instance_qname,
             service_type=MdnsServiceType.OPERATIONAL.value,
             log_output=True
@@ -253,7 +254,7 @@ class TC_SC_4_3(MatterBaseTest):
         # TH performs a query for the TXT record against the qname instance_qname.
         # The TXT record MAY be absent if txt_record_required is False
         self.step(9)
-        txt_record = await MdnsDiscovery().get_txt_record(
+        txt_record = await mdns.get_txt_record(
             service_name=instance_qname,
             service_type=MdnsServiceType.OPERATIONAL.value,
             log_output=True
@@ -262,7 +263,7 @@ class TC_SC_4_3(MatterBaseTest):
         # *** STEP 10 ***
         # TH performs a query for the AAAA record against the target listed in the SRV record.
         self.step(10)
-        quada_records = await MdnsDiscovery().get_quada_records(
+        quada_records = await mdns.get_quada_records(
             hostname=srv_record.hostname,
             log_output=True
         )
@@ -362,7 +363,7 @@ class TC_SC_4_3(MatterBaseTest):
         # text using capital letters.
         self.step(12)
         op_sub_type = self.get_operational_subtype(log_result=True)
-        ptr_records = await MdnsDiscovery().get_ptr_records(
+        ptr_records = await mdns.get_ptr_records(
             service_types=[op_sub_type],
             log_output=True,
         )
@@ -376,7 +377,7 @@ class TC_SC_4_3(MatterBaseTest):
         # *** STEP 13 ***
         # TH performs a DNS-SD browse for _matter._tcp.local
         self.step(13)
-        ptr_records = await MdnsDiscovery().get_ptr_records(
+        ptr_records = await mdns.get_ptr_records(
             service_types=[MdnsServiceType.OPERATIONAL.value],
             log_output=True,
         )
