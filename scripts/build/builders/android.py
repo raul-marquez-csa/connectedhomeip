@@ -164,17 +164,17 @@ class AndroidBuilder(Builder):
                 # Test environment - assume the path is valid
                 sdk_manager = path
                 checked_details.append(f"{path} (test environment - assumed valid)")
-                log.info(f"Using SDK manager for {for_purpose} from test environment: {sdk_manager}")
+                log.info("Using SDK manager for %s from test environment: %s", for_purpose, sdk_manager)
                 break
             # Real environment - check actual file existence
             exists = os.path.isfile(path)
             executable = os.access(path, os.X_OK)
             checked_details.append(f"{path} (exists: {exists}, executable: {executable})")
-            log.debug(f"Checking SDK manager path for {for_purpose}: {path} - exists: {exists}, executable: {executable}")
+            log.debug("Checking SDK manager path for %s: %s - exists: %s, executable: %s", for_purpose, path, exists, executable)
 
             if exists and executable:
                 sdk_manager = path
-                log.info(f"Found SDK manager for {for_purpose} at: {sdk_manager}")
+                log.info("Found SDK manager for %s at: %s", for_purpose, sdk_manager)
                 break
 
         return sdk_manager, checked_details
@@ -199,8 +199,8 @@ class AndroidBuilder(Builder):
         android_home = os.environ.get("ANDROID_HOME", "")
 
         log.info("Android environment paths:")
-        log.info(f"  ANDROID_NDK_HOME: {android_ndk_home}")
-        log.info(f"  ANDROID_HOME: {android_home}")
+        log.info("  ANDROID_NDK_HOME: %s", android_ndk_home)
+        log.info("  ANDROID_HOME: %s", android_home)
 
         for k in ["ANDROID_NDK_HOME", "ANDROID_HOME"]:
             if k not in os.environ:
@@ -215,7 +215,7 @@ class AndroidBuilder(Builder):
         if not sdk_manager:
             log.error("SDK manager not found in any expected location")
             for detail in checked_details:
-                log.error(f"  {detail}")
+                log.error("  %s", detail)
 
             android_home = os.environ["ANDROID_HOME"]
             possible_fixes = [
@@ -547,6 +547,9 @@ class AndroidBuilder(Builder):
                 title="Building JNI " + self.identifier,
             )
 
+            if self.options.build_profile in [BuildProfile.RELEASE, BuildProfile.RELEASE_SIZE] or self.optimize_size:
+                self.stripSymbols()
+
             exampleName = self.app.ExampleName()
             if exampleName is None:
                 self.copyToSrcAndroid()
@@ -647,9 +650,6 @@ class AndroidBuilder(Builder):
 
                 self.copyToExampleApp(jnilibs_dir, libs_dir, libs, jars)
                 self.gradlewBuildExampleAndroid()
-
-            if self.options.build_profile in [BuildProfile.RELEASE, BuildProfile.RELEASE_SIZE] or self.optimize_size:
-                self.stripSymbols()
 
     @lock_output_dir
     def build_outputs(self):
